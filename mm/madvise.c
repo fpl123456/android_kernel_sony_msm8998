@@ -21,13 +21,6 @@
 #include <linux/swap.h>
 #include <linux/swapops.h>
 
-#ifndef MADV_WIPEONFORK
-#define MADV_WIPEONFORK 18
-#endif
-
-#ifndef MADV_KEEPONFORK
-#define MADV_KEEPONFORK 19
-#endif
 
 /*
  * Any behaviour which results in changes to the vma->vm_flags needs to
@@ -477,6 +470,10 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 	if (behavior == MADV_HWPOISON || behavior == MADV_SOFT_OFFLINE)
 		return madvise_hwpoison(behavior, start, start+len_in);
 #endif
+	if (behavior == 18 || behavior == 19) {
+        return 0;
+    }
+	
 	if (!madvise_behavior_valid(behavior))
 		return error;
 
