@@ -292,14 +292,14 @@ if [ -n "${CONFIG_KALLSYMS}" ]; then
 	kallsyms .tmp_vmlinux2 .tmp_kallsyms2.o
 
 	# step 2a
-	if [ -n "${KALLSYMS_EXTRA_PASS}" ]; then
+#	if [ -n "${KALLSYMS_EXTRA_PASS}" ]; then
 		kallsymso=.tmp_kallsyms3.o
 		kallsyms_vmlinux=.tmp_vmlinux3
 
 		vmlinux_link .tmp_kallsyms2.o .tmp_vmlinux3
 
 		kallsyms .tmp_vmlinux3 .tmp_kallsyms3.o
-	fi
+#	fi
 fi
 
 info LD vmlinux
