@@ -80,13 +80,6 @@ static long madvise_behavior(struct vm_area_struct *vma,
 		}
 		new_flags &= ~VM_DONTCOPY;
 		break;
-	case MADV_WIPEONFORK:
-    case MADV_KEEPONFORK:
-        /* * 什麼都不做，直接回傳 0 代表成功。
-         * 這樣 libc 就不會崩潰，手機就能開機。
-         * 因為我們沒有改 mm.h，所以不會有秒崩的問題。
-         */
-        return 0;
 	case MADV_DONTDUMP:
 		new_flags |= VM_DONTDUMP;
 		break;
@@ -421,8 +414,6 @@ madvise_behavior_valid(int behavior)
 #endif
 	case MADV_DONTDUMP:
 	case MADV_DODUMP:
-	case MADV_WIPEONFORK:
-    case MADV_KEEPONFORK:
 		return true;
 
 	default:
