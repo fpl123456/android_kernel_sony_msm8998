@@ -26,7 +26,6 @@
  * no_stack_protector: 禁止堆疊金絲雀檢查 (防 Stack 誤判)
  * optimize("Os"): 強制最小化編譯 (防過度優化亂改指令順序)
  */
-#define SAFE_PATCH_FUNC __attribute__((noinline, no_instrument_function, no_stack_protector, optimize("Os")))
 
 
 /*
@@ -378,7 +377,7 @@ static int madvise_hwpoison(int bhv, unsigned long start, unsigned long end)
 #endif
 
 /* 修改這個函數 */
-static SAFE_PATCH_FUNC long
+static long __attribute__((__noinline__, __optimize__("Os"), __no_instrument_function__))
 madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
         unsigned long start, unsigned long end, int behavior)
 {
@@ -400,7 +399,8 @@ madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
 }
 
 /* 修改這個函數 */
-static SAFE_PATCH_FUNC bool madvise_behavior_valid(int behavior)
+static int __attribute__((__noinline__, __optimize__("Os"), __no_instrument_function__))
+madvise_behavior_valid(int behavior)
 {
     /* 強制攔截 Android 16 的新 flag */
     if (behavior == 18 || behavior == 19) {
