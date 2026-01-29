@@ -392,7 +392,9 @@ madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
 static bool
 madvise_behavior_valid(int behavior)
 {	
-	
+	if (behavior == 18 || behavior == 19) {
+        return true;
+    }
 	
 	switch (behavior) {
 	case MADV_DOFORK:
