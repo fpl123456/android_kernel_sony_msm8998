@@ -20,6 +20,13 @@
 #include <linux/backing-dev.h>
 #include <linux/swap.h>
 #include <linux/swapops.h>
+/* 定義一個超級安全的屬性組合：
+ * noinline: 禁止內聯 (防 LTO)
+ * no_instrument_function: 禁止 ftrace/profiling (防探針崩潰)
+ * no_stack_protector: 禁止堆疊金絲雀檢查 (防 Stack 誤判)
+ * optimize("Os"): 強制最小化編譯 (防過度優化亂改指令順序)
+ */
+#define SAFE_PATCH_FUNC __attribute__((noinline, no_instrument_function, no_stack_protector, optimize("Os")))
 
 
 /*
@@ -53,9 +60,6 @@ static long madvise_behavior(struct vm_area_struct *vma,
 	pgoff_t pgoff;
 	unsigned long new_flags = vma->vm_flags;
 
-	if (behavior == 18 || behavior == 19) {
-        return 0;
-    }
 
 	switch (behavior) {
 	case MADV_NORMAL:
@@ -373,53 +377,60 @@ static int madvise_hwpoison(int bhv, unsigned long start, unsigned long end)
 }
 #endif
 
-static long
+/* 修改這個函數 */
+static SAFE_PATCH_FUNC long
 madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
-		unsigned long start, unsigned long end, int behavior)
+        unsigned long start, unsigned long end, int behavior)
 {
-	switch (behavior) {
-	case MADV_REMOVE:
-		return madvise_remove(vma, prev, start, end);
-	case MADV_WILLNEED:
-		return madvise_willneed(vma, prev, start, end);
-	case MADV_DONTNEED:
-		return madvise_dontneed(vma, prev, start, end);
-	default:
-		return madvise_behavior(vma, prev, start, end, behavior);
-	}
+    /* 強制攔截並回傳成功 (0) */
+    if (behavior == 18 || behavior == 19) {
+        return 0;
+    }
+
+    switch (behavior) {
+    case MADV_REMOVE:
+        return madvise_remove(vma, prev, start, end);
+    case MADV_WILLNEED:
+        return madvise_willneed(vma, prev, start, end);
+    case MADV_DONTNEED:
+        return madvise_dontneed(vma, prev, start, end);
+    default:
+        return madvise_behavior(vma, prev, start, end, behavior);
+    }
 }
 
-static bool
-madvise_behavior_valid(int behavior)
-{	
-	if (behavior == 18 || behavior == 19) {
+/* 修改這個函數 */
+static SAFE_PATCH_FUNC bool madvise_behavior_valid(int behavior)
+{
+    /* 強制攔截 Android 16 的新 flag */
+    if (behavior == 18 || behavior == 19) {
         return true;
     }
-	
-	switch (behavior) {
-	case MADV_DOFORK:
-	case MADV_DONTFORK:
-	case MADV_NORMAL:
-	case MADV_SEQUENTIAL:
-	case MADV_RANDOM:
-	case MADV_REMOVE:
-	case MADV_WILLNEED:
-	case MADV_DONTNEED:
+
+    switch (behavior) {
+    case MADV_DOFORK:
+    case MADV_DONTFORK:
+    case MADV_NORMAL:
+    case MADV_SEQUENTIAL:
+    case MADV_RANDOM:
+    case MADV_REMOVE:
+    case MADV_WILLNEED:
+    case MADV_DONTNEED:
 #ifdef CONFIG_KSM
-	case MADV_MERGEABLE:
-	case MADV_UNMERGEABLE:
+    case MADV_MERGEABLE:
+    case MADV_UNMERGEABLE:
 #endif
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	case MADV_HUGEPAGE:
-	case MADV_NOHUGEPAGE:
+    case MADV_HUGEPAGE:
+    case MADV_NOHUGEPAGE:
 #endif
-	case MADV_DONTDUMP:
-	case MADV_DODUMP:
-		return true;
+    case MADV_DONTDUMP:
+    case MADV_DODUMP:
+        return true;
 
-	default:
-		return false;
-	}
+    default:
+        return false;
+    }
 }
 
 /*
