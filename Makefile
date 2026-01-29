@@ -15,6 +15,24 @@ NAME = Blurry Fish Butt
 # o Look for make include files relative to root of kernel src
 MAKEFLAGS += -rR --include-dir=$(CURDIR)
 
+# =========================================================
+# 【強制關閉 LTO 補丁】 FORCE DISABLE LTO
+# =========================================================
+# 清除所有 LTO 相關的變數，防止被下層 Makefile 讀取
+KBUILD_CFLAGS := $(filter-out -flto -flto=thin -flto=full, $(KBUILD_CFLAGS))
+KBUILD_LDFLAGS := $(filter-out -flto -flto=thin -flto=full, $(KBUILD_LDFLAGS))
+LDFLAGS_vmlinux := $(filter-out -flto -flto=thin -flto=full, $(LDFLAGS_vmlinux))
+
+# 強制加入關閉參數，確保 Clang 閉嘴
+KBUILD_CFLAGS += -fno-lto
+LDFLAGS += -fno-lto
+LDFLAGS_vmlinux += -fno-lto
+
+# 欺騙 Kconfig，讓它以為 LTO 是關閉的
+export CONFIG_LTO_CLANG=n
+export CONFIG_LTO_NONE=y
+# =========================================================
+
 # Avoid funny character set dependencies
 unexport LC_ALL
 LC_COLLATE=C
