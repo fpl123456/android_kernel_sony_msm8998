@@ -2,14 +2,6 @@
 # Makefile for the linux memory manager.
 #
 
-# ========================================================
-# 強制解除 madvise.o 的所有武裝
-# -fno-stack-protector: 關閉堆疊溢位檢查 (防止 Canary 錯誤導致秒崩)
-# -fno-lto: 關閉 LTO (防止連結時結構錯位)
-# -fno-sanitize=all: 關閉所有動態檢測
-# ========================================================
-CFLAGS_madvise.o := -fno-stack-protector -fno-lto -fno-sanitize=all
-
 KASAN_SANITIZE_slab_common.o := n
 KASAN_SANITIZE_slab.o := n
 KASAN_SANITIZE_slub.o := n
