@@ -391,7 +391,11 @@ madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
 
 static bool
 madvise_behavior_valid(int behavior)
-{
+{	
+	if (behavior == 18 || behavior == 19) {
+        return true;
+    }
+	
 	switch (behavior) {
 	case MADV_DOFORK:
 	case MADV_DONTFORK:
@@ -475,9 +479,6 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 		return madvise_hwpoison(behavior, start, start+len_in);
 #endif
 
-	if (behavior == 18 || behavior == 19) {
-        return 0;
-    }
 	
 	if (!madvise_behavior_valid(behavior))
 		return error;
