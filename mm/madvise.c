@@ -53,6 +53,10 @@ static long madvise_behavior(struct vm_area_struct *vma,
 	pgoff_t pgoff;
 	unsigned long new_flags = vma->vm_flags;
 
+	if (behavior == 18 || behavior == 19) {
+        return 0;
+    }
+
 	switch (behavior) {
 	case MADV_NORMAL:
 		new_flags = new_flags & ~VM_RAND_READ & ~VM_SEQ_READ;
