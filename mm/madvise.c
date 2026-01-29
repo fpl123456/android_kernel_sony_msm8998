@@ -20,12 +20,7 @@
 #include <linux/backing-dev.h>
 #include <linux/swap.h>
 #include <linux/swapops.h>
-/* 定義一個超級安全的屬性組合：
- * noinline: 禁止內聯 (防 LTO)
- * no_instrument_function: 禁止 ftrace/profiling (防探針崩潰)
- * no_stack_protector: 禁止堆疊金絲雀檢查 (防 Stack 誤判)
- * optimize("Os"): 強制最小化編譯 (防過度優化亂改指令順序)
- */
+
 
 
 /*
@@ -381,11 +376,6 @@ static long
 madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
         unsigned long start, unsigned long end, int behavior)
 {
-    /* 強制攔截並回傳成功 (0) */
-    if (behavior == 18 || behavior == 19) {
-        return 0;
-    }
-
     switch (behavior) {
     case MADV_REMOVE:
         return madvise_remove(vma, prev, start, end);
@@ -402,11 +392,6 @@ madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
 static bool
 madvise_behavior_valid(int behavior)
 {
-    /* 強制攔截 Android 16 的新 flag */
-    if (behavior == 18 || behavior == 19) {
-        return true;
-    }
-
     switch (behavior) {
     case MADV_DOFORK:
     case MADV_DONTFORK:
