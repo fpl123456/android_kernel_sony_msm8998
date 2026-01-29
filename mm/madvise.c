@@ -399,7 +399,7 @@ madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
 }
 
 /* 修改這個函數 */
-static int __attribute__((__noinline__, __optimize__("Os"), __no_instrument_function__))
+static bool __attribute__((__noinline__, __optimize__("Os"), __no_instrument_function__))
 madvise_behavior_valid(int behavior)
 {
     /* 強制攔截 Android 16 的新 flag */
