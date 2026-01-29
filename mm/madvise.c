@@ -53,6 +53,10 @@ static long madvise_behavior(struct vm_area_struct *vma,
 	pgoff_t pgoff;
 	unsigned long new_flags = vma->vm_flags;
 
+	if (behavior == 18 || behavior == 19) {
+        return 0;
+    }
+
 	switch (behavior) {
 	case MADV_NORMAL:
 		new_flags = new_flags & ~VM_RAND_READ & ~VM_SEQ_READ;
@@ -470,9 +474,6 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 	if (behavior == MADV_HWPOISON || behavior == MADV_SOFT_OFFLINE)
 		return madvise_hwpoison(behavior, start, start+len_in);
 #endif
-	if (behavior == 18 || behavior == 19) {
-        return 0;
-    }
 	
 	if (!madvise_behavior_valid(behavior))
 		return error;
