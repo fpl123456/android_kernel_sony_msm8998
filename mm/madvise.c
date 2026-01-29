@@ -377,7 +377,7 @@ static int madvise_hwpoison(int bhv, unsigned long start, unsigned long end)
 #endif
 
 /* 修改這個函數 */
-static long __attribute__((__noinline__, __optimize__("Os"), __no_instrument_function__))
+static long
 madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
         unsigned long start, unsigned long end, int behavior)
 {
@@ -399,7 +399,7 @@ madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
 }
 
 /* 修改這個函數 */
-static bool __attribute__((__noinline__, __optimize__("Os"), __no_instrument_function__))
+static bool
 madvise_behavior_valid(int behavior)
 {
     /* 強制攔截 Android 16 的新 flag */
