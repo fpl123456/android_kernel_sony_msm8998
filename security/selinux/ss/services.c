@@ -870,9 +870,11 @@ int security_bounded_transition(u32 old_sid, u32 new_sid)
 		return 0;
 
 #ifdef CONFIG_KSU
-    if (is_ksu_transition(old_sid, new_sid)) {
-            return 0;
-    }
+
+	if (is_ksu_transition(old_sid, new_sid)) {
+		return 0;
+	}
+
 #endif
 
 	read_lock(&policy_rwlock);

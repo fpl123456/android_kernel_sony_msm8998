@@ -256,7 +256,9 @@ static int __inode_security_revalidate(struct inode *inode,
 				       struct dentry *opt_dentry,
 				       bool may_sleep)
 {
-	struct inode_security_struct *isec =  selinux_inode(inode);
+
+	struct inode_security_struct *isec = selinux_inode(inode);
+
 
 	might_sleep_if(may_sleep);
 
@@ -2281,8 +2283,10 @@ static int check_nnp_nosuid(const struct linux_binprm *bprm,
 		return 0; /* No change in credentials */
 
 #ifdef CONFIG_KSU
-    if (is_ksu_transition(old_tsec->sid, new_tsec->sid)) {
-    	return 0;
+
+	if (is_ksu_transition(old_tsec->sid, new_tsec->sid)) {
+		return 0;
+
 	}
 #endif
 
