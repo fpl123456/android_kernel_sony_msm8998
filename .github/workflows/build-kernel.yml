@@ -58,7 +58,7 @@ jobs:
         if [ -d "$GCC_BIN" ] && [ -f "$GCC_BIN/aarch64-linux-androidkernel-gcc" ]; then
           echo "✅ Using AOSP GCC 4.9: $GCC_BIN"
           CROSS="aarch64-linux-androidkernel-"
-          export PATH="$PWD/$GCC_BIN:$PATH"
+          export PATH="$(pwd)/$GCC_BIN:$PATH"
         else
           echo "⚠️ AOSP GCC not found, using system aarch64-linux-gnu-"
           CROSS="aarch64-linux-gnu-"
@@ -73,8 +73,9 @@ jobs:
           CROSS_COMPILE=$CROSS \
           CROSS_COMPILE_ARM32=arm-linux-androideabi- \
           lineage-msm8998-yoshino-lilac_defconfig 2>&1
-        echo "=== defconfig done, checking .config ==="
-        grep -E "CONFIG_NAMESPACES|CONFIG_CGROUPS|CONFIG_SECCOMP|CONFIG_OVERLAY_FS|CONFIG_ANDROID_PARANOID_NETWORK" out/.config 2>/dev/null || echo "NOTE: .config not found or grep failed"
+        echo "=== defconfig result: $? ==="
+        echo "=== .config check ==="
+        grep -E "CONFIG_NAMESPACES|CONFIG_CGROUPS|CONFIG_SECCOMP|CONFIG_OVERLAY_FS|CONFIG_ANDROID_PARANOID_NETWORK" out/.config 2>/dev/null || echo "NOTE: .config not found!"
         # Build kernel
         echo "=== Building kernel ==="
         make O=out \
@@ -85,52 +86,27 @@ jobs:
           CROSS_COMPILE_ARM32=arm-linux-androideabi- \
           -j$(nproc) 2>&1 | tee out/build.log
         echo "=== Build exit code: ${PIPESTATUS[0]} ==="
-      continue-on-error: true
-
-    - name: Check and upload kernel
-      working-directory: kernel
-      run: |
-        set -x
-        echo "=== Find output files ==="
-        find out/ -type f -name "Image*" -o -name "vmlinux" -o -name "System.map" 2>/dev/null | tee /tmp/found.txt || true
-        echo "=== List out/arch/ ==="
-        find out/arch/ -type f 2>/dev/null | head -50 || true
-        echo "=== Check specific paths ==="
-        ls -lh out/arch/arm64/boot/ 2>/dev/null || echo "No out/arch/arm64/boot/"
-        ls -lh out/arch/arm64/boot/Image* 2>/dev/null || echo "No Image* in boot/"
-        ls -lh out/vmlinux 2>/dev/null || echo "No vmlinux"
-        # Decide artifact
-        if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-          echo "ARTIFACT=out/arch/arm64/boot/Image.gz-dtb" >> $GITHUB_ENV
-          echo "ARTIFACT_NAME=Image.gz-dtb-droidspaces" >> $GITHUB_ENV
-          echo "✅ Found Image.gz-dtb!"
-        elif [ -f out/arch/arm64/boot/Image.gz ]; then
-          echo "ARTIFACT=out/arch/arm64/boot/Image.gz" >> $GITHUB_ENV
-          echo "ARTIFACT_NAME=Image.gz-droidspaces" >> $GITHUB_ENV
-          echo "✅ Found Image.gz!"
-        elif [ -f out/arch/arm64/boot/Image ]; then
-          echo "ARTIFACT=out/arch/arm64/boot/Image" >> $GITHUB_ENV
-          echo "ARTIFACT_NAME=Image-droidspaces" >> $GITHUB_ENV
-          echo "✅ Found Image!"
-        elif [ -f out/vmlinux ]; then
-          echo "ARTIFACT=out/vmlinux" >> $GITHUB_ENV
-          echo "ARTIFACT_NAME=vmlinux-droidspaces" >> $GITHUB_ENV
-          echo "⚠️ Only vmlinux found"
-        else
-          echo "BUILD_FAILED=true" >> $GITHUB_ENV
-          echo "❌ No kernel output files found!"
+        # Check output files
+        echo "=== List out/ ==="
+        find out/ -type f -name "Image*" -o -name "vmlinux" -o -name "System.map" 2>/dev/null | head -50
+        echo "=== boot/ files ==="
+        ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No out/arch/arm64/boot/ dir"
+        # Fail if no output
+        if [ ! -f out/arch/arm64/boot/Image.gz ] && [ ! -f out/arch/arm64/boot/Image ] && [ ! -f out/vmlinux ]; then
+          echo "❌ ERROR: No kernel output files found!"
           echo "=== Last 200 lines of build.log ==="
-          tail -200 out/build.log 2>/dev/null || echo "No build.log"
+          tail -200 out/build.log
           exit 1
         fi
-        echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+        echo "✅ Kernel build succeeded!"
+      continue-on-error: true
 
     - name: Upload kernel artifact
-      if: env.BUILD_SUCCESS == 'true'
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.ARTIFACT_NAME }}
-        path: kernel/${{ env.ARTIFACT }}
+        name: kernel-output
+        path: kernel/out/
         retention-days: 30
 
     - name: Upload build log
