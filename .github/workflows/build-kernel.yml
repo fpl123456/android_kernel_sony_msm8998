@@ -17,34 +17,41 @@ jobs:
         ref: droidspaces-support
         fetch-depth: 1
 
-    - name: Build kernel (GCC 4.9 from git)
+    - name: Install deps and build kernel
       timeout-minutes: 110
       shell: bash
       run: |
         set -eo pipefail
         echo "=== Installing dependencies ==="
         sudo apt-get update -q
-        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 xz-utils wget
+        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 xz-utils wget gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-        echo "=== Cloning AOSP GCC 4.9 toolchain ==="
-        # Use AOSP prebuilts mirror on GitHub
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain || {
-          echo "FAILED to clone from LineageOS, trying alternative..."
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain
-        }
-
-        TOOLCHAIN_DIR="$(pwd)/toolchain/bin"
-        export CROSS_COMPILE="${TOOLCHAIN_DIR}/aarch64-linux-android-"
+        echo "=== Setting up toolchain (aarch64-linux-gnu -> aarch64-linux-android prefix) ==="
+        mkdir -p ~/toolchain-bin
+        for tool in gcc g++ as ld ar ranlib strip objcopy objdump nm; do
+          if [ -f /usr/bin/aarch64-linux-gnu-${tool} ]; then
+            ln -sf /usr/bin/aarch64-linux-gnu-${tool} ~/toolchain-bin/aarch64-linux-android-${tool}
+          fi
+        done
+        # Also link cpp
+        ln -sf /usr/bin/aarch64-linux-gnu-cpp ~/toolchain-bin/aarch64-linux-android-cpp 2>/dev/null || true
+        # Also link gcc-ar, gcc-ranlib etc
+        for tool in gcc-ar gcc-ranlib; do
+          if [ -f /usr/bin/aarch64-linux-gnu-${tool} ]; then
+            ln -sf /usr/bin/aarch64-linux-gnu-${tool} ~/toolchain-bin/aarch64-linux-android-${tool}
+          fi
+        done
+        export PATH=~/toolchain-bin:$PATH
+        export CROSS_COMPILE=aarch64-linux-android-
         export ARCH=arm64
 
         echo "=== Verify toolchain ==="
-        ls -la "${TOOLCHAIN_DIR}/aarch64-linux-android-"* || { echo "ERROR: toolchain binaries not found!"; exit 1; }
-        ${CROSS_COMPILE}gcc --version | head -1
+        aarch64-linux-android-gcc --version | head -1
 
         echo "=== Generate defconfig ==="
         make O=out ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE} lineage-msm8998-yoshino-lilac_defconfig
 
-        echo "=== Build kernel (verbose) ==="
+        echo "=== Build kernel ==="
         make O=out ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE} -j$(nproc) 2>&1 | tee build.log
 
         echo "=== Verify output ==="
