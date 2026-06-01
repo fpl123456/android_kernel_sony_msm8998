@@ -17,44 +17,42 @@ jobs:
         ref: droidspaces-support
         fetch-depth: 1
 
-    - name: Install dependencies
+    - name: Build kernel with AOSP GCC 4.9
+      timeout-minutes: 110
       run: |
-        sudo apt-get update
-        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 xz-utils wget
+        set -e
+        echo "=== Installing dependencies ==="
+        sudo apt-get update -q
+        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 xz-utils
 
-    - name: Clone AOSP GCC 4.9 toolchain (GitHub mirror)
-      timeout-minutes: 15
-      run: |
+        echo "=== Cloning AOSP GCC 4.9 toolchain ==="
         git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
-        echo "CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-" >> $GITHUB_ENV
-        $(pwd)/toolchain/bin/aarch64-linux-android-gcc --version | head -1
-
-    - name: Generate defconfig
-      timeout-minutes: 5
-      run: |
+        export CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-
         export ARCH=arm64
-        export CROSS_COMPILE=${{ env.CROSS_COMPILE }}
-        make O=out lineage-msm8998-yoshino-lilac_defconfig
 
-    - name: Build kernel
-      timeout-minutes: 90
-      run: |
-        export ARCH=arm64
-        export CROSS_COMPILE=${{ env.CROSS_COMPILE }}
-        make O=out -j$(nproc) 2>&1 | tee build.log
+        echo "=== Toolchain version ==="
+        ${CROSS_COMPILE}gcc --version | head -1
 
-    - name: Verify build output
-      run: |
+        echo "=== Generating defconfig ==="
+        make O=out ${ARCH:+"ARCH=$ARCH"} CROSS_COMPILE=${CROSS_COMPILE} lineage-msm8998-yoshino-lilac_defconfig
+
+        echo "=== Building kernel ==="
+        make O=out ${ARCH:+"ARCH=$ARCH"} CROSS_COMPILE=${CROSS_COMPILE} -j$(nproc) 2>&1 | tee build.log
+
+        echo "=== Verifying output ==="
         ls -lh out/arch/arm64/boot/Image.gz-dtb
-        echo "Kernel build SUCCESS"
+        echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
+
+      shell: bash
 
     - name: Upload kernel artifact
-      if: success()
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: Image.gz-dtb-droidspaces
         path: out/arch/arm64/boot/Image.gz-dtb
         retention-days: 30
+        if-no-files-found: warn
 
     - name: Upload build log
       if: always()
