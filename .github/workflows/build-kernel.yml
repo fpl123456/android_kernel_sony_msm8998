@@ -98,7 +98,7 @@ jobs:
           CLANG_TRIPLE=aarch64-linux-gnu- \
           CROSS_COMPILE=$CROSS \
           CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          -j$(nproc) 2>&1 | tail -150
+          -j$(nproc) 2>&1 | tee out/build.log
         echo "=== Build exit code: ${PIPESTATUS[0]} ==="
       continue-on-error: true
 
