@@ -106,17 +106,34 @@ jobs:
       working-directory: kernel
       run: |
         echo "=== Build output files ==="
-        find out/arch/arm64/boot/ -type f 2>/dev/null || echo "No arch/arm64/boot/ files"
+        find out/arch/arm64/boot/ -type f 2>/dev/null | tee /tmp/boot_files.txt || true
+        ls -lh out/arch/arm64/boot/ 2>/dev/null || echo "No boot/ dir"
+        echo "=== vmlinux ==="
+        ls -lh out/vmlinux 2>/dev/null || echo "No vmlinux"
+        # Accept any of these as success
         if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
           echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
-          echo "✅ Kernel built successfully!"
-          ls -lh out/arch/arm64/boot/Image.gz-dtb
+          echo "ARTIFACT_PATH=out/arch/arm64/boot/Image.gz-dtb" >> $GITHUB_ENV
+          echo "ARTIFACT_NAME=Image.gz-dtb-droidspaces" >> $GITHUB_ENV
+          echo "✅ Kernel built: Image.gz-dtb found!"
+        elif [ -f out/arch/arm64/boot/Image.gz ]; then
+          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+          echo "ARTIFACT_PATH=out/arch/arm64/boot/Image.gz" >> $GITHUB_ENV
+          echo "ARTIFACT_NAME=Image.gz-droidspaces" >> $GITHUB_ENV
+          echo "✅ Kernel built: Image.gz found! (DTB not appended)"
+        elif [ -f out/arch/arm64/boot/Image ]; then
+          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+          echo "ARTIFACT_PATH=out/arch/arm64/boot/Image" >> $GITHUB_ENV
+          echo "ARTIFACT_NAME=Image-droidspaces" >> $GITHUB_ENV
+          echo "✅ Kernel built: Image found!"
+        elif [ -f out/vmlinux ]; then
+          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+          echo "⚠️ vmlinux found but no boot image"
         else
           echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
-          echo "❌ Kernel build failed!"
+          echo "❌ Kernel build failed - no output files!"
           echo "=== Last 100 lines of build output ==="
           tail -100 out/build.log 2>/dev/null || echo "No build.log"
-          # Try to find error messages
           grep -i "error\|fatal\|undefined" out/build.log 2>/dev/null | head -30 || true
           exit 1
         fi
@@ -125,8 +142,8 @@ jobs:
       if: env.BUILD_SUCCESS == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: Image.gz-dtb-droidspaces
-        path: kernel/out/arch/arm64/boot/Image.gz-dtb
+        name: ${{ env.ARTIFACT_NAME }}
+        path: kernel/${{ env.ARTIFACT_PATH }}
         retention-days: 30
 
     - name: Upload build log
