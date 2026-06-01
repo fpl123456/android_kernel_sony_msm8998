@@ -1,4 +1,4 @@
-name: Build Sony XZ1C Kernel (Droidspaces)
+name: Build Kernel (Droidspaces Support)
 
 on:
   push:
@@ -14,50 +14,33 @@ jobs:
     - name: Checkout kernel source
       uses: actions/checkout@v4
       with:
-        repository: fpl123456/android_kernel_sony_msm8998
         ref: droidspaces-support
         fetch-depth: 1
 
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3
+        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 gcc
 
-    - name: Setup cross-compile toolchain (aarch64-linux-android-4.9)
+    - name: Setup toolchain (aarch64-linux-android-4.9)
       run: |
-        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git toolchain
-        echo "TOOLCHAIN_PATH=$(pwd)/toolchain/bin/aarch64-linux-android-" >> $GITHUB_ENV
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain
+        echo "CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-" >> $GITHUB_ENV
+        echo "ARCH=arm64" >> $GITHUB_ENV
 
-    - name: Build kernel defconfig
+    - name: Generate defconfig
       run: |
-        export ARCH=arm64
-        export CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-
-        make O=out lineage-msm8998-yoshino-lilac_defconfig
+        make O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} lineage-msm8998-yoshino-lilac_defconfig
 
     - name: Build kernel
       run: |
-        export ARCH=arm64
-        export CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-
-        make O=out -j$(nproc) 2>&1 | tee build.log
-
-    - name: Check build result
-      run: |
-        if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
-          echo "Kernel built successfully!"
-          ls -lh out/arch/arm64/boot/Image.gz-dtb
-        else
-          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
-          echo "Kernel build failed!"
-          tail -50 build.log
-          exit 1
-        fi
+        make O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} -j$(nproc) 2>&1 | tee build.log
 
     - name: Upload kernel artifact
-      if: env.BUILD_SUCCESS == 'true'
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: kernel-droidspaces-lilac
+        name: Image.gz-dtb-droidspaces
         path: out/arch/arm64/boot/Image.gz-dtb
         retention-days: 30
 
