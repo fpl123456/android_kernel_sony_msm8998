@@ -142,9 +142,10 @@ jobs:
         else
           echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
           echo "❌ Kernel build failed - no output files!"
-          echo "=== Last 100 lines of build output ==="
-          tail -100 out/build.log 2>/dev/null || echo "No build.log"
-          grep -i "error\|fatal\|undefined" out/build.log 2>/dev/null | head -30 || true
+          echo "=== Full build.log (last 200 lines) ==="
+          tail -200 out/build.log 2>/dev/null || echo "No build.log"
+          echo "=== grep errors ==="
+          grep -i "error:\|undefined reference\|fatal:" out/build.log 2>/dev/null | head -50 || true
           exit 1
         fi
 
