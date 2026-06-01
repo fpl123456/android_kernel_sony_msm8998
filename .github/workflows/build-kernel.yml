@@ -17,20 +17,35 @@ jobs:
         ref: droidspaces-support
         fetch-depth: 1
 
-    - name: Install dependencies and toolchain
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 gcc
-        sudo apt-get install -y gcc-aarch64-linux-gnu
+        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3
+
+    - name: Clone Linaro GCC 7 aarch64 toolchain
+      run: |
+        # Use Linaro GCC 7.5 (works well with kernel 4.4)
+        wget -q https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/aarch64-linux-gnu/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz -O toolchain.tar.xz
+        tar xf toolchain.tar.xz
+        mv gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu toolchain
+        echo "CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-gnu-" >> $GITHUB_ENV
+        $(pwd)/toolchain/bin/aarch64-linux-gnu-gcc --version | head -1
+      timeout-minutes: 10
+
+    - name: Generate defconfig
+      run: |
+        make O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} lineage-msm8998-yoshino-lilac_defconfig
+      timeout-minutes: 5
 
     - name: Build kernel
-      env:
-        ARCH: arm64
-        CROSS_COMPILE: aarch64-linux-gnu-
       run: |
-        make O=out lineage-msm8998-yoshino-lilac_defconfig
-        make O=out -j$(nproc) 2>&1 | tee build.log
+        make O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} -j$(nproc) 2>&1 | tee build.log
+      timeout-minutes: 90
+
+    - name: Verify build output
+      run: |
         ls -lh out/arch/arm64/boot/Image.gz-dtb
+        echo "Kernel build SUCCESS"
 
     - name: Upload kernel artifact
       if: success()
