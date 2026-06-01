@@ -105,30 +105,40 @@ jobs:
     - name: Check build result
       working-directory: kernel
       run: |
-        echo "=== Build output files ==="
-        find out/arch/arm64/boot/ -type f 2>/dev/null | tee /tmp/boot_files.txt || true
-        ls -lh out/arch/arm64/boot/ 2>/dev/null || echo "No boot/ dir"
+        set -x
+        echo "=== List out/ ==="
+        ls -R out/ 2>/dev/null | head -100 || echo "out/ is empty or missing"
+        echo "=== boot/ files ==="
+        ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No boot/ dir"
         echo "=== vmlinux ==="
         ls -lh out/vmlinux 2>/dev/null || echo "No vmlinux"
-        # Accept any of these as success
-        if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+        # Check for actual output files
+        FOUND=""
+        for f in \
+          out/arch/arm64/boot/Image.gz-dtb \
+          out/arch/arm64/boot/Image.gz \
+          out/arch/arm64/boot/Image \
+          out/vmlinux \
+          out/System.map; do
+          if [ -f "$f" ]; then
+            echo "✅ Found: $f"
+            FOUND="$FOUND $f"
+          fi
+        done
+        if [ -n "$FOUND" ]; then
           echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
-          echo "ARTIFACT_PATH=out/arch/arm64/boot/Image.gz-dtb" >> $GITHUB_ENV
-          echo "ARTIFACT_NAME=Image.gz-dtb-droidspaces" >> $GITHUB_ENV
-          echo "✅ Kernel built: Image.gz-dtb found!"
-        elif [ -f out/arch/arm64/boot/Image.gz ]; then
-          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
-          echo "ARTIFACT_PATH=out/arch/arm64/boot/Image.gz" >> $GITHUB_ENV
-          echo "ARTIFACT_NAME=Image.gz-droidspaces" >> $GITHUB_ENV
-          echo "✅ Kernel built: Image.gz found! (DTB not appended)"
-        elif [ -f out/arch/arm64/boot/Image ]; then
-          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
-          echo "ARTIFACT_PATH=out/arch/arm64/boot/Image" >> $GITHUB_ENV
-          echo "ARTIFACT_NAME=Image-droidspaces" >> $GITHUB_ENV
-          echo "✅ Kernel built: Image found!"
-        elif [ -f out/vmlinux ]; then
-          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
-          echo "⚠️ vmlinux found but no boot image"
+          # Pick the best artifact
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            echo "ARTIFACT_PATH=out/arch/arm64/boot/Image.gz-dtb" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME=Image.gz-dtb-droidspaces" >> $GITHUB_ENV
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            echo "ARTIFACT_PATH=out/arch/arm64/boot/Image.gz" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME=Image.gz-droidspaces" >> $GITHUB_ENV
+          elif [ -f out/arch/arm64/boot/Image ]; then
+            echo "ARTIFACT_PATH=out/arch/arm64/boot/Image" >> $GITHUB_ENV
+            echo "ARTIFACT_NAME=Image-droidspaces" >> $GITHUB_ENV
+          fi
+          echo "✅ Kernel build succeeded! Found:$FOUND"
         else
           echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
           echo "❌ Kernel build failed - no output files!"
