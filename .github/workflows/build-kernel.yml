@@ -20,27 +20,28 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3
+        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 xz-utils wget
 
-    - name: Clone Linaro GCC 7 aarch64 toolchain
+    - name: Clone AOSP GCC 4.9 toolchain (GitHub mirror)
+      timeout-minutes: 15
       run: |
-        # Use Linaro GCC 7.5 (works well with kernel 4.4)
-        wget -q https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/aarch64-linux-gnu/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz -O toolchain.tar.xz
-        tar xf toolchain.tar.xz
-        mv gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu toolchain
-        echo "CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-gnu-" >> $GITHUB_ENV
-        $(pwd)/toolchain/bin/aarch64-linux-gnu-gcc --version | head -1
-      timeout-minutes: 10
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
+        echo "CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-" >> $GITHUB_ENV
+        $(pwd)/toolchain/bin/aarch64-linux-android-gcc --version | head -1
 
     - name: Generate defconfig
-      run: |
-        make O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} lineage-msm8998-yoshino-lilac_defconfig
       timeout-minutes: 5
+      run: |
+        export ARCH=arm64
+        export CROSS_COMPILE=${{ env.CROSS_COMPILE }}
+        make O=out lineage-msm8998-yoshino-lilac_defconfig
 
     - name: Build kernel
-      run: |
-        make O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} -j$(nproc) 2>&1 | tee build.log
       timeout-minutes: 90
+      run: |
+        export ARCH=arm64
+        export CROSS_COMPILE=${{ env.CROSS_COMPILE }}
+        make O=out -j$(nproc) 2>&1 | tee build.log
 
     - name: Verify build output
       run: |
