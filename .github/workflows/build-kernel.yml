@@ -1,4 +1,4 @@
-name: Build Kernel (Droidspaces)
+name: Build Lilac Kernel (Droidspaces)
 
 on:
   push:
@@ -14,63 +14,102 @@ jobs:
     - name: Checkout kernel source
       uses: actions/checkout@v4
       with:
+        repository: fpl123456/android_kernel_sony_msm8998
         ref: droidspaces-support
         fetch-depth: 1
+        path: kernel
 
-    - name: Install deps and build kernel
-      timeout-minutes: 110
-      shell: bash
+    - name: Install dependencies
       run: |
-        set -eo pipefail
-        echo "=== Installing dependencies ==="
-        sudo apt-get update -q
-        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 xz-utils wget gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        sudo apt-get update
+        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 wget
 
-        echo "=== Setting up toolchain (aarch64-linux-gnu -> aarch64-linux-android prefix) ==="
-        mkdir -p ~/toolchain-bin
-        for tool in gcc g++ as ld ar ranlib strip objcopy objdump nm; do
-          if [ -f /usr/bin/aarch64-linux-gnu-${tool} ]; then
-            ln -sf /usr/bin/aarch64-linux-gnu-${tool} ~/toolchain-bin/aarch64-linux-android-${tool}
-          fi
-        done
-        # Also link cpp
-        ln -sf /usr/bin/aarch64-linux-gnu-cpp ~/toolchain-bin/aarch64-linux-android-cpp 2>/dev/null || true
-        # Also link gcc-ar, gcc-ranlib etc
-        for tool in gcc-ar gcc-ranlib; do
-          if [ -f /usr/bin/aarch64-linux-gnu-${tool} ]; then
-            ln -sf /usr/bin/aarch64-linux-gnu-${tool} ~/toolchain-bin/aarch64-linux-android-${tool}
-          fi
-        done
-        export PATH=~/toolchain-bin:$PATH
-        export CROSS_COMPILE=aarch64-linux-android-
-        export ARCH=arm64
+    - name: Install Clang
+      run: |
+        sudo apt-get install -y clang llvm lld
+        clang --version
+        which clang
 
-        echo "=== Verify toolchain ==="
-        aarch64-linux-android-gcc --version | head -1
+    - name: Clone GCC 4.9 toolchain (AOSP style)
+      working-directory: kernel
+      run: |
+        # AOSP uses aarch64-linux-androidkernel-4.9 for kernel builds
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9.git prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9 || \
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-androidkernel-4.9.git prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9 || \
+        echo "WARNING: could not clone GCC toolchain, will try system GCC"
+        ls -la prebuilts/gcc/linux-x86/aarch64/ 2>/dev/null || echo "No prebuilts dir"
 
-        echo "=== Generate defconfig ==="
-        make O=out ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE} lineage-msm8998-yoshino-lilac_defconfig
+    - name: Setup environment variables
+      working-directory: kernel
+      run: |
+        echo "ARCH=arm64" >> $GITHUB_ENV
+        echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+        # Prefer cloned AOSP GCC, fallback to system aarch64-linux-gnu
+        if [ -d "prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin" ]; then
+          echo "CROSS_COMPILE=aarch64-linux-androidkernel-" >> $GITHUB_ENV
+          echo "GCC_PATH=$(pwd)/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin" >> $GITHUB_ENV
+          echo "Using AOSP GCC 4.9 toolchain"
+        else
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "Using system GCC (may not be compatible)" >> $GITHUB_STEP_SUMMARY
+          echo "Using system GCC (may not be compatible)"
+        fi
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "LD=ld.lld" >> $GITHUB_ENV
+        echo "CLANG_PATH=$(which clang)" >> $GITHUB_ENV
 
-        echo "=== Build kernel ==="
-        make O=out ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE} -j$(nproc) 2>&1 | tee build.log
+    - name: Generate defconfig
+      working-directory: kernel
+      run: |
+        set -x
+        make O=out lineage-msm8998-yoshino-lilac_defconfig \
+          ARCH=arm64 \
+          CC=clang \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-androidkernel- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        echo "=== .config check ==="
+        grep -E "CONFIG_NAMESPACES|CONFIG_CGROUPS|CONFIG_SECCOMP|CONFIG_OVERLAY_FS|CONFIG_ANDROID_PARANOID_NETWORK" out/.config || true
 
-        echo "=== Verify output ==="
-        ls -lh out/arch/arm64/boot/Image.gz-dtb
-        echo "BUILD_SUCCESS=true" >> $GITHUB_OUTPUT
+    - name: Build kernel
+      working-directory: kernel
+      run: |
+        set -x
+        # Show toolchain info
+        clang --version | head -3
+        which aarch64-linux-androidkernel-gcc 2>/dev/null || echo "No aarch64-linux-androidkernel-gcc, will use CROSS_COMPILE=aarch64-linux-gnu-"
+        # Build with Clang + GCC
+        make O=out -j$(nproc) 2>&1 | tail -100
+        echo "Build exit code: ${PIPESTATUS[0]}"
+      continue-on-error: true
+
+    - name: Check build result
+      working-directory: kernel
+      run: |
+        if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+          echo "BUILD_SUCCESS=true" >> $GITHUB_ENV
+          echo "✅ Kernel built successfully!"
+          ls -lh out/arch/arm64/boot/Image.gz-dtb
+        else
+          echo "BUILD_SUCCESS=false" >> $GITHUB_ENV
+          echo "❌ Kernel build failed!"
+          echo "=== Last 80 lines of build log ==="
+          tail -80 out/build.log 2>/dev/null || echo "No build.log"
+          exit 1
+        fi
 
     - name: Upload kernel artifact
-      if: always()
+      if: env.BUILD_SUCCESS == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: Image.gz-dtb-droidspaces
-        path: out/arch/arm64/boot/Image.gz-dtb
+        path: kernel/out/arch/arm64/boot/Image.gz-dtb
         retention-days: 30
-        if-no-files-found: warn
 
     - name: Upload build log
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: build-log
-        path: build.log
+        path: kernel/out/build.log
         retention-days: 7
