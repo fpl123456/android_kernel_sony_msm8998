@@ -1,4 +1,4 @@
-name: Build Kernel (Droidspaces Support)
+name: Build Kernel (Droidspaces)
 
 on:
   push:
@@ -17,24 +17,20 @@ jobs:
         ref: droidspaces-support
         fetch-depth: 1
 
-    - name: Install dependencies
+    - name: Install dependencies and toolchain
       run: |
         sudo apt-get update
         sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 gcc
-
-    - name: Setup toolchain (aarch64-linux-android-4.9)
-      run: |
-        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain
-        echo "CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-" >> $GITHUB_ENV
-        echo "ARCH=arm64" >> $GITHUB_ENV
-
-    - name: Generate defconfig
-      run: |
-        make O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} lineage-msm8998-yoshino-lilac_defconfig
+        sudo apt-get install -y gcc-aarch64-linux-gnu
 
     - name: Build kernel
+      env:
+        ARCH: arm64
+        CROSS_COMPILE: aarch64-linux-gnu-
       run: |
-        make O=out ARCH=arm64 CROSS_COMPILE=${{ env.CROSS_COMPILE }} -j$(nproc) 2>&1 | tee build.log
+        make O=out lineage-msm8998-yoshino-lilac_defconfig
+        make O=out -j$(nproc) 2>&1 | tee build.log
+        ls -lh out/arch/arm64/boot/Image.gz-dtb
 
     - name: Upload kernel artifact
       if: success()
