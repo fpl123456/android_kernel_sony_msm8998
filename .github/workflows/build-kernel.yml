@@ -73,9 +73,9 @@ jobs:
           CROSS_COMPILE=$CROSS \
           CROSS_COMPILE_ARM32=arm-linux-androideabi- \
           lineage-msm8998-yoshino-lilac_defconfig 2>&1
-        echo "=== defconfig result: $? ==="
+        echo "=== defconfig exit code: $? ==="
         echo "=== .config check ==="
-        grep -E "CONFIG_NAMESPACES|CONFIG_CGROUPS|CONFIG_SECCOMP|CONFIG_OVERLAY_FS|CONFIG_ANDROID_PARANOID_NETWORK" out/.config 2>/dev/null || echo "NOTE: .config not found!"
+        grep -E "CONFIG_NAMESPACES|CONFIG_CGROUPS|CONFIG_SECCOMP|CONFIG_OVERLAY_FS|CONFIG_ANDROID_PARANOID_NETWORK" out/.config 2>/dev/null || echo "NOTE: .config not found or grep failed"
         # Build kernel
         echo "=== Building kernel ==="
         make O=out \
@@ -87,10 +87,10 @@ jobs:
           -j$(nproc) 2>&1 | tee out/build.log
         echo "=== Build exit code: ${PIPESTATUS[0]} ==="
         # Check output files
-        echo "=== List out/ ==="
-        find out/ -type f -name "Image*" -o -name "vmlinux" -o -name "System.map" 2>/dev/null | head -50
-        echo "=== boot/ files ==="
-        ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No out/arch/arm64/boot/ dir"
+        echo "=== Check output files ==="
+        ls -R out/arch/arm64/boot/ 2>/dev/null | head -50 || echo "No out/arch/arm64/boot/ dir"
+        ls -lh out/vmlinux 2>/dev/null || echo "No out/vmlinux"
+        ls -lh out/System.map 2>/dev/null || echo "No out/System.map"
         # Fail if no output
         if [ ! -f out/arch/arm64/boot/Image.gz ] && [ ! -f out/arch/arm64/boot/Image ] && [ ! -f out/vmlinux ]; then
           echo "❌ ERROR: No kernel output files found!"
@@ -105,7 +105,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: kernel-output
-        path: kernel/out/arch/arm64/boot/
+        path: kernel/out/
         retention-days: 30
 
     - name: Upload build log
