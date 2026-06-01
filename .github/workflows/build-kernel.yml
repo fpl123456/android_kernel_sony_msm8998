@@ -99,14 +99,13 @@ jobs:
           exit 1
         fi
         echo "✅ Kernel build succeeded!"
-      continue-on-error: true
 
     - name: Upload kernel artifact
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: kernel-output
-        path: kernel/out/
+        path: kernel/out/arch/arm64/boot/
         retention-days: 30
 
     - name: Upload build log
