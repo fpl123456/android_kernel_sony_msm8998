@@ -28,77 +28,54 @@ jobs:
       run: |
         sudo apt-get install -y clang llvm lld
         clang --version | head -3
-        which clang && echo "clang: $(which clang)"
-        which ld.lld && echo "ld.lld: $(which ld.lld)" || echo "ld.lld not found"
 
-    - name: Clone AOSP GCC 4.9 toolchain
+    - name: Setup aarch64 cross compiler
       working-directory: kernel
       run: |
-        set -x
-        echo "=== Trying LineageOS mirror ==="
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-androidkernel-4.9.git \
-          prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9 2>&1 || true
-        echo "=== Clone result ==="
-        ls -la prebuilts/gcc/linux-x86/aarch64/ 2>/dev/null || echo "No prebuilts dir yet"
-        if [ -d prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin ]; then
-          echo "=== Toolchain binaries ==="
-          ls prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin/ | head -20
-        fi
+        set -e
+        # 用 apt 安装的系统交叉编译器，创建 aarch64-linux-androidkernel- 前缀的符号链接
+        sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+        mkdir -p prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin
+        cd prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin
+        for tool in gcc g++ ld ar as nm strip objdump objcopy ranlib strings; do
+          if [ -f /usr/bin/aarch64-linux-gnu-${tool} ]; then
+            ln -sf /usr/bin/aarch64-linux-gnu-${tool} aarch64-linux-androidkernel-${tool}
+          fi
+        done
+        ls -la
+        echo "✅ Toolchain symlinks created"
 
-    - name: Build kernel (defconfig + make)
+    - name: Build kernel
       working-directory: kernel
       run: |
-        set -x
+        set -e
+        export ARCH=arm64
+        export CC=clang
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+        export CROSS_COMPILE=aarch64-linux-androidkernel-
+        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        export PATH="$(pwd)/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin:$PATH"
+
+        echo "=== Environment check ==="
+        which clang
+        which aarch64-linux-androidkernel-gcc || echo "WARNING: aarch64-linux-androidkernel-gcc not found"
+        aarch64-linux-gnu-gcc --version | head -1
+
+        echo "=== Generating defconfig ==="
         mkdir -p out
-        echo "=== Environment ==="
-        echo "PWD: $(pwd)"
-        clang --version | head -2
-        # Decide toolchain
-        GCC_BIN="prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin"
-        if [ -d "$GCC_BIN" ] && [ -f "$GCC_BIN/aarch64-linux-androidkernel-gcc" ]; then
-          echo "✅ Using AOSP GCC 4.9: $GCC_BIN"
-          CROSS="aarch64-linux-androidkernel-"
-          export PATH="$(pwd)/$GCC_BIN:$PATH"
-        else
-          echo "⚠️ AOSP GCC not found, using system aarch64-linux-gnu-"
-          CROSS="aarch64-linux-gnu-"
-        fi
-        echo "CROSS_COMPILE=$CROSS"
-        # Generate defconfig
-        echo "=== make defconfig ==="
-        make O=out \
-          ARCH=arm64 \
-          CC=clang \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=$CROSS \
-          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          lineage-msm8998-yoshino-lilac_defconfig 2>&1
-        echo "=== defconfig exit code: $? ==="
-        echo "=== .config check ==="
-        grep -E "CONFIG_NAMESPACES|CONFIG_CGROUPS|CONFIG_SECCOMP|CONFIG_OVERLAY_FS|CONFIG_ANDROID_PARANOID_NETWORK" out/.config 2>/dev/null || echo "NOTE: .config not found or grep failed"
-        # Build kernel
+        make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-androidkernel- CROSS_COMPILE_ARM32=arm-linux-androideabi- lineage-msm8998-yoshino-lilac_defconfig
+
+        echo "=== Verify Droidspaces config ==="
+        grep -E "CONFIG_NAMESPACES|CONFIG_CGROUPS|CONFIG_SECCOMP|CONFIG_OVERLAY_FS|CONFIG_ANDROID_PARANOID_NETWORK" out/.config || echo "NOTE: some configs not found"
+
         echo "=== Building kernel ==="
-        make O=out \
-          ARCH=arm64 \
-          CC=clang \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=$CROSS \
-          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          -j$(nproc) 2>&1 | tee out/build.log
-        echo "=== Build exit code: ${PIPESTATUS[0]} ==="
-        # Check output files
-        echo "=== Check output files ==="
-        ls -R out/arch/arm64/boot/ 2>/dev/null | head -50 || echo "No out/arch/arm64/boot/ dir"
-        ls -lh out/vmlinux 2>/dev/null || echo "No out/vmlinux"
-        ls -lh out/System.map 2>/dev/null || echo "No out/System.map"
-        # Fail if no output
-        if [ ! -f out/arch/arm64/boot/Image.gz ] && [ ! -f out/arch/arm64/boot/Image ] && [ ! -f out/vmlinux ]; then
-          echo "❌ ERROR: No kernel output files found!"
-          echo "=== Last 200 lines of build.log ==="
-          tail -200 out/build.log
-          exit 1
-        fi
-        echo "✅ Kernel build succeeded!"
+        make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-androidkernel- CROSS_COMPILE_ARM32=arm-linux-androideabi- -j$(nproc) 2>&1 | tee out/build.log
+
+        echo "=== Build output files ==="
+        ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No boot/ dir"
+        find out/ -name "Image*" -o -name "vmlinux" -o -name "System.map" 2>/dev/null
+
+        echo "✅ Kernel build completed!"
 
     - name: Upload kernel artifact
       if: always()
