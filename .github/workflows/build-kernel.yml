@@ -22,7 +22,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 wget xz-utils
+        sudo apt-get install -y bc bison flex libssl-dev make git ccache python3 wget xz-utils zip
 
     - name: Install Clang/LLVM
       run: |
@@ -33,7 +33,6 @@ jobs:
       working-directory: kernel
       run: |
         set -e
-        # 用 apt 安装的系统交叉编译器，创建 aarch64-linux-androidkernel- 前缀的符号链接
         sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
         mkdir -p prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin
         cd prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin
@@ -42,7 +41,6 @@ jobs:
             ln -sf /usr/bin/aarch64-linux-gnu-${tool} aarch64-linux-androidkernel-${tool}
           fi
         done
-        ls -la
         echo "✅ Toolchain symlinks created"
 
     - name: Build kernel
@@ -56,39 +54,106 @@ jobs:
         export CROSS_COMPILE_ARM32=arm-linux-androideabi-
         export PATH="$(pwd)/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-androidkernel-4.9/bin:$PATH"
 
-        echo "=== Environment check ==="
-        which clang
-        which aarch64-linux-androidkernel-gcc || echo "WARNING: aarch64-linux-androidkernel-gcc not found"
-        aarch64-linux-gnu-gcc --version | head -1
-
         echo "=== Generating defconfig ==="
         mkdir -p out
         make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-androidkernel- CROSS_COMPILE_ARM32=arm-linux-androideabi- lineage-msm8998-yoshino-lilac_defconfig
 
-        echo "=== Verify Droidspaces config ==="
-        grep -E "CONFIG_NAMESPACES|CONFIG_CGROUPS|CONFIG_SECCOMP|CONFIG_OVERLAY_FS|CONFIG_ANDROID_PARANOID_NETWORK" out/.config || echo "NOTE: some configs not found"
-
         echo "=== Building kernel ==="
-        make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-androidkernel- CROSS_COMPILE_ARM32=arm-linux-androideabi- -j$(nproc) 2>&1 | tee out/build.log
+        make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-androidkernel- CROSS_COMPILE_ARM32=arm-linux-androideabi- -j$(nproc)
 
-        echo "=== Build output files ==="
-        ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No boot/ dir"
-        find out/ -name "Image*" -o -name "vmlinux" -o -name "System.map" 2>/dev/null
+        echo "=== Build output ==="
+        ls -la out/arch/arm64/boot/
+        find out/arch/arm64/boot/ -name "Image*" | head -10
+        find out/arch/arm64/boot/dts/qcom/ -name "*.dtb" | head -5
 
-        echo "✅ Kernel build completed!"
+    - name: Package flashable kernel ZIP
+      working-directory: kernel
+      if: success()
+      run: |
+        set -e
+        # 创建 AnyKernel3 格式的刷机包
+        PKG_DIR=/tmp/kernel-flashable
+        rm -rf $PKG_DIR && mkdir -p $PKG_DIR
 
-    - name: Upload kernel artifact
+        # 复制内核镜像（优先 Image.gz-dtb，其次 Image.gz，最后 Image）
+        KERNEL_IMAGE=""
+        for img in out/arch/arm64/boot/Image.gz-dtb out/arch/arm64/boot/Image.gz out/arch/arm64/boot/Image; do
+          if [ -f "$img" ]; then
+            KERNEL_IMAGE="$img"
+            break
+          fi
+        done
+        if [ -z "$KERNEL_IMAGE" ]; then
+          echo "❌ No kernel image found!"
+          ls -laR out/arch/arm64/boot/
+          exit 1
+        fi
+        cp "$KERNEL_IMAGE" "$PKG_DIR/kernel"
+
+        # 复制 dtb 文件（如果单独存在）
+        mkdir -p $PKG_DIR/dtb
+        find out/arch/arm64/boot/dts/ -name "*.dtb" 2>/dev/null | while read dtb; do
+          cp "$dtb" "$PKG_DIR/dtb/"
+        done
+
+        # 创建 update-binary 和 META-INF 目录结构
+        mkdir -p $PKG_DIR/META-INF/com/google/android
+
+        cat > $PKG_DIR/META-INF/com/google/android/update-binary << 'SCRIPT'
+#!/sbin/sh
+# Droidspaces Kernel Flash Script
+OUTFD=$2
+ZIPFILE=$3
+ui_print "========================================="
+ui_print " Lilac Kernel with Droidspaces Support "
+ui_print "========================================="
+ui_print ""
+ui_print "Extracting kernel..."
+cd /tmp
+mkdir -p kernel_tmp
+unzip -o "$ZIPFILE" -d kernel_tmp > /dev/null 2>&1
+if [ -f kernel_tmp/kernel ]; then
+  ui_print "Flashing kernel..."
+  dd if=/dev/zero of=/dev/block/byname/boot bs=4096 2>/dev/null || true
+  dd if=kernel_tmp/kernel of=/dev/block/byname/boot bs=4096
+  ui_print "✅ Kernel flashed successfully!"
+else
+  ui_print "❌ Error: kernel not found in package!"
+fi
+rm -rf /tmp/kernel_tmp
+ui_print ""
+ui_print "Done!"
+SCRIPT
+        chmod +x $PKG_DIR/META-INF/com/google/android/update-binary
+
+        cat > $PKG_DIR/META-INF/com/google/android/updater-script << 'UPDATER'
+# Droidspaces Kernel Updater Script
+show_progress(0.500000, 0);
+package_extract_dir("kernel", "/tmp");
+show_progress(0.800000, 0);
+run_program("/sbin/dd", "if=/tmp/kernel", "of=/dev/block/byname/boot", "bs=4096");
+set_progress(1.000000);
+UPDATER
+
+        # 打包为 ZIP
+        cd $PKG_DIR
+        zip -r /tmp/lilac-kernel-droidspaces.zip .
+        cp /tmp/lilac-kernel-droidspaces.zip /home/runner/work/android_kernel_sony_msm8998/android_kernel_sony_msm8998/lilac-kernel-droidspaces.zip
+        echo "✅ Flashable kernel ZIP created:"
+        ls -lh /tmp/lilac-kernel-droidspaces.zip
+
+    - name: Upload flashable kernel ZIP
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: kernel-output
-        path: kernel/out/
-        retention-days: 30
+        name: lilac-kernel-flashable
+        path: lilac-kernel-droidspaces.zip
+        retention-days: 90
 
-    - name: Upload build log
+    - name: Upload build info
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: build-log
-        path: kernel/out/build.log
+        name: kernel-boot-files
+        path: kernel/out/arch/arm64/boot/
         retention-days: 7
