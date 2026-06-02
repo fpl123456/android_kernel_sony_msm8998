@@ -85,28 +85,11 @@ jobs:
         PKG=/tmp/flashable
         rm -rf $PKG && mkdir -p $PKG
         cp "$KERNEL_IMG" "$PKG/kernel"
-        mkdir -p $PKG/META-INF/com/google/android
-        cat > $PKG/META-INF/com/google/android/updater-script << 'EOF'
-ui_print "Flashing Droidspaces kernel for lilac..."
-package_extract_file("kernel", "/dev/block/byname/boot");
-ui_print "Done!";
-EOF
-        cat > $PKG/META-INF/com/google/android/update-binary << 'EOF'
-#!/sbin/sh
-OUTFD=/proc/self/fd/$2
-ZIP="$3"
-ui_print() { echo "ui_print $1" > "$OUTFD"; echo "ui_print" > "$OUTFD"; }
-ui_print "========================================="
-ui_print " Lilac Kernel - Droidspaces Support"
-ui_print "========================================="
-ui_print "Extracting kernel..."
-mkdir -p /tmp/ktmp
-unzip -o "$ZIP" kernel -d /tmp/ktmp
-ui_print "Flashing kernel..."
-cat /tmp/ktmp/kernel > /dev/block/byname/boot
-rm -rf /tmp/ktmp
-ui_print "Done!"
-EOF
+        mkdir -p $PKG/META-INF/com/google/android/
+        echo 'ui_print "Flashing Droidspaces kernel for lilac...";' > $PKG/META-INF/com/google/android/updater-script
+        echo 'package_extract_file("kernel", "/dev/block/byname/boot");' >> $PKG/META-INF/com/google/android/updater-script
+        echo 'ui_print "Done!";' >> $PKG/META-INF/com/google/android/updater-script
+        printf '#!/sbin/sh\nOUTFD=/proc/self/fd/$2\nZIP="$3"\nui_print() { echo "ui_print $1" > "$OUTFD"; echo "ui_print" > "$OUTFD"; }\nui_print "========================================="\nui_print " Lilac Kernel - Droidspaces Support"\nui_print "========================================="\nui_print "Extracting kernel..."\nmkdir -p /tmp/ktmp\nunzip -o "$ZIP" kernel -d /tmp/ktmp\nui_print "Flashing kernel..."\ncat /tmp/ktmp/kernel > /dev/block/byname/boot\nrm -rf /tmp/ktmp\nui_print "Done!"\n' > $PKG/META-INF/com/google/android/update-binary
         chmod 755 $PKG/META-INF/com/google/android/update-binary
         cd $PKG
         zip -r /tmp/lilac-droidspaces.zip .
